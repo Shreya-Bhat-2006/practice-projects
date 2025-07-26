@@ -1,258 +1,436 @@
 import tkinter as tk
-import tkinter.messagebox as msg
-import tkinter.simpledialog
+from tkinter import messagebox, simpledialog, ttk
 import json
 import os
 import hashlib
-from tkinter.ttk import Combobox
 import smtplib
 import random
 from cryptography.fernet import Fernet
+from dotenv import load_dotenv
 
-class AuthApp:
-    def load_or_create_key(self):
-        key_file = "secret.key"
-        if os.path.exists(key_file):
-            with open(key_file, "rb") as f:
-                return f.read()
-        else:
-            key = Fernet.generate_key()
-            with open(key_file, "wb") as f:
-                f.write(key)
-            return key
+load_dotenv()
 
+# NEW: Folder and file paths setup
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(PROJECT_DIR, "secure_notepad_data")
+os.makedirs(DATA_DIR, exist_ok=True)  # Auto-create folder
+
+USER_DATA_PATH = os.path.join(DATA_DIR, "user_data.json")
+NOTES_DATA_PATH = os.path.join(DATA_DIR, "notes_data.json")
+KEY_FILE_PATH = os.path.join(DATA_DIR, "secret.key")
+
+class SecureNotepad:
     def __init__(self):
-        self.fernet = Fernet(self.load_or_create_key())
-        self.window = tk.Tk()
-        self.window.title("Secure Notepad App")
-        self.window.geometry("500x400")
-        self.window.config(bg="#ffe6f0")
+        self.fernet = self._initialize_encryption()
+        self.window = self._setup_window()
         self.current_user = None
-        self.show_welcome_screen()
+        self._show_welcome_screen()
         self.window.mainloop()
 
-    def hash_password(self, password):
+    # ======================
+    # Security Methods
+    # ======================
+    def _initialize_encryption(self):
+        """Handles encryption key creation/loading"""
+        if os.path.exists(KEY_FILE_PATH):
+            with open(KEY_FILE_PATH, "rb") as f:
+                return Fernet(f.read())
+        key = Fernet.generate_key()
+        with open(KEY_FILE_PATH, "wb") as f:
+            f.write(key)
+        return Fernet(key)
+
+    def _hash_password(self, password):
+        """Securely hashes passwords using SHA-256"""
         return hashlib.sha256(password.encode()).hexdigest()
 
-    def send_otp_to_email(self, email):
-        otp = str(random.randint(100000, 999999))
-        sender_email = "iamshreyabhat@gmail.com"
-        sender_pass = "vxprnzeaytakuqmb"
-        subject = "Your OTP Verification Code"
-        message = f"Subject: {subject}\n\nYour OTP is: {otp}"
+    def _send_otp(self, email):
+        """Sends OTP via SMTP with environment variables"""
+        sender_email = os.getenv("VAULT_EMAIL")
+        sender_pass = os.getenv("VAULT_EMAIL_PASSWORD")
+        
+        if not all([sender_email, sender_pass]):
+            messagebox.showerror("Configuration Error", 
+                               "Email credentials not properly configured")
+            return None
 
+        otp = str(random.randint(100000, 999999))
         try:
             with smtplib.SMTP("smtp.gmail.com", 587) as server:
                 server.starttls()
                 server.login(sender_email, sender_pass)
-                server.sendmail(sender_email, email, message)
+                server.sendmail(
+                    sender_email,
+                    email,
+                    f"Subject: Secure Notepad OTP\n\nYour OTP is: {otp}"
+                )
             return otp
         except Exception as e:
-            msg.showerror("Email Error", f"❌ Could not send OTP:\n{e}")
+            messagebox.showerror("Email Error", 
+                                f"Failed to send OTP:\n{str(e)}")
             return None
 
-    def show_welcome_screen(self):
+    # ======================
+    # UI Screens
+    # ======================
+    def _setup_window(self):
+        """Configures main application window"""
+        window = tk.Tk()
+        window.title("Secure Notepad v2.0")
+        window.geometry("500x450")
+        window.configure(bg="#f0f8ff")
+        window.resizable(False, False)
+        return window
+
+    def _clear_screen(self):
+        """Clears all widgets from window"""
         for widget in self.window.winfo_children():
             widget.destroy()
 
-        tk.Label(self.window, text="✨ Welcome to Secure Notepad ✨", font=("Arial", 18, "bold"),
-                 bg="#ffe6f0", fg="#800040").pack(pady=30)
+    def _show_welcome_screen(self):
+        """Initial welcome/authentication screen"""
+        self._clear_screen()
+        
+        tk.Label(
+            self.window, 
+            text="🔒 Secure Notepad", 
+            font=("Arial", 20, "bold"),
+            bg="#f0f8ff"
+        ).pack(pady=30)
 
-        tk.Button(self.window, text="Login", width=20, font=("Arial", 14, "bold"), bg="#ffb3d9",
-                  command=self.show_login_screen).pack(pady=10)
+        action_frame = tk.Frame(self.window, bg="#f0f8ff")
+        action_frame.pack(pady=20)
 
-        tk.Button(self.window, text="Sign Up", width=20, font=("Arial", 14, "bold"), bg="#d9b3ff",
-                  command=self.show_signup_screen).pack(pady=10)
+        buttons = [
+            ("Login", "#4CAF50", self._show_login_screen),
+            ("Sign Up", "#2196F3", self._show_signup_screen),
+            ("Exit", "#f44336", self.window.quit)
+        ]
 
-        tk.Button(self.window, text="Exit", width=20, font=("Arial", 14, "bold"), bg="#b3d9ff",
-                  command=self.exit_app).pack(pady=10)
+        for text, color, command in buttons:
+            tk.Button(
+                action_frame,
+                text=text,
+                width=15,
+                font=("Arial", 12),
+                bg=color,
+                fg="white",
+                command=command
+            ).pack(pady=8, padx=10)
 
-    def show_signup_screen(self):
-        for widget in self.window.winfo_children():
-            widget.destroy()
+    def _show_signup_screen(self):
+        """User registration screen"""
+        self._clear_screen()
+        
+        tk.Label(
+            self.window,
+            text="Create Account",
+            font=("Arial", 18),
+            bg="#f0f8ff"
+        ).pack(pady=20)
 
-        self.window.config(bg="#f0fff0")
+        entries = {}
+        fields = [
+            ("Username", "username"),
+            ("Email", "email"), 
+            ("Password", "password", True),
+            ("Confirm Password", "confirm", True)
+        ]
 
-        tk.Label(self.window, text="🔐 Create Account", font=("Arial", 18, "bold"), bg="#f0fff0", fg="#006600").pack(pady=20)
+        for field in fields:
+            label_text = field[0]
+            field_name = field[1]
+            show_char = "*" if len(field) > 2 else ""
+            
+            tk.Label(
+                self.window,
+                text=label_text + ":",
+                font=("Arial", 10),
+                bg="#f0f8ff"
+            ).pack()
+            
+            entries[field_name] = tk.Entry(
+                self.window,
+                width=30,
+                show=show_char
+            )
+            entries[field_name].pack(pady=5)
 
-        self.name_entry = tk.Entry(self.window, width=30)
-        self.email_entry = tk.Entry(self.window, width=30)
-        self.pass_entry = tk.Entry(self.window, show="*", width=30)
-        self.confirm_entry = tk.Entry(self.window, show="*", width=30)
+        self.signup_entries = entries
 
-        for text, widget in zip(["Username:", "Email:", "Password:", "Confirm Password:"],
-                                [self.name_entry, self.email_entry, self.pass_entry, self.confirm_entry]):
-            tk.Label(self.window, text=text, font=("Arial", 12), bg="#f0fff0").pack()
-            widget.pack(pady=5)
+        tk.Button(
+            self.window,
+            text="Register",
+            width=20,
+            font=("Arial", 12),
+            bg="#2196F3",
+            fg="white",
+            command=self._handle_signup
+        ).pack(pady=20)
 
-        tk.Button(self.window, text="Register", width=20, font=("Arial", 12, "bold"), bg="#ccffcc",
-                  command=self.register_clicked).pack(pady=20)
+        tk.Button(
+            self.window,
+            text="← Back",
+            command=self._show_welcome_screen
+        ).pack()
 
-        tk.Button(self.window, text="← Back", width=15, font=("Arial", 12, "bold"), bg="#ccccff",
-                  command=self.show_welcome_screen).pack()
+    def _show_login_screen(self):
+        """User login screen"""
+        self._clear_screen()
+        
+        tk.Label(
+            self.window,
+            text="Login",
+            font=("Arial", 18),
+            bg="#f0f8ff"
+        ).pack(pady=20)
 
-    def register_clicked(self):
-        name, email = self.name_entry.get().strip(), self.email_entry.get().strip()
-        password, confirm = self.pass_entry.get().strip(), self.confirm_entry.get().strip()
+        # Username dropdown
+        usernames = []
+        if os.path.exists(USER_DATA_PATH):
+            with open(USER_DATA_PATH, "r") as f:
+                usernames = list(json.load(f).keys())
 
-        if not name or not email or not password or not confirm:
-            msg.showwarning("Input Error", "⚠️ Please fill in all fields.")
+        tk.Label(
+            self.window,
+            text="Username:",
+            font=("Arial", 10),
+            bg="#f0f8ff"
+        ).pack()
+        
+        self.username_combo = ttk.Combobox(
+            self.window,
+            values=usernames,
+            state="readonly",
+            width=27
+        )
+        self.username_combo.pack(pady=5)
+
+        # Password entry
+        tk.Label(
+            self.window,
+            text="Password:",
+            font=("Arial", 10),
+            bg="#f0f8ff"
+        ).pack()
+        
+        self.password_entry = tk.Entry(
+            self.window,
+            width=30,
+            show="*"
+        )
+        self.password_entry.pack(pady=5)
+
+        tk.Button(
+            self.window,
+            text="Login",
+            width=20,
+            font=("Arial", 12),
+            bg="#4CAF50",
+            fg="white",
+            command=self._handle_login
+        ).pack(pady=20)
+
+        tk.Button(
+            self.window,
+            text="← Back",
+            command=self._show_welcome_screen
+        ).pack()
+
+    def _show_notepad(self):
+        """Main notepad interface"""
+        self._clear_screen()
+        
+        # Header
+        header = tk.Frame(self.window, bg="#e3f2fd")
+        header.pack(fill=tk.X, padx=5, pady=5)
+        
+        tk.Label(
+            header,
+            text=f"User: {self.current_user}",
+            font=("Arial", 10, "bold"),
+            bg="#e3f2fd"
+        ).pack(side=tk.LEFT)
+        
+        tk.Button(
+            header,
+            text="Logout",
+            command=self._show_welcome_screen,
+            bg="#f44336",
+            fg="white"
+        ).pack(side=tk.RIGHT)
+
+        # Text area
+        self.text_area = tk.Text(
+            self.window,
+            wrap=tk.WORD,
+            width=50,
+            height=20,
+            font=("Arial", 11)
+        )
+        self.text_area.pack(pady=10, padx=10)
+
+        # Load existing note
+        self._load_note()
+
+        # Button controls
+        button_frame = tk.Frame(self.window)
+        button_frame.pack(pady=10)
+        
+        tk.Button(
+            button_frame,
+            text="Save",
+            command=self._save_note,
+            bg="#4CAF50",
+            fg="white",
+            width=10
+        ).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(
+            button_frame,
+            text="Clear",
+            command=self._clear_note,
+            bg="#ff9800",
+            fg="white",
+            width=10
+        ).pack(side=tk.LEFT, padx=5)
+
+    # ======================
+    # Core Functionality
+    # ======================
+    def _handle_signup(self):
+        """Processes new user registration"""
+        username = self.signup_entries["username"].get().strip()
+        email = self.signup_entries["email"].get().strip().lower()
+        password = self.signup_entries["password"].get()
+        confirm = self.signup_entries["confirm"].get()
+
+        # Validation
+        if not all([username, email, password, confirm]):
+            messagebox.showwarning("Error", "All fields are required!")
             return
-        if "@gmail.com" not in email:
-            msg.showwarning("Invalid Email", "⚠️ Please enter a valid Gmail address.")
-            return
+            
         if password != confirm:
-            msg.showwarning("Password Mismatch", "⚠️ Passwords do not match.")
+            messagebox.showwarning("Error", "Passwords don't match!")
+            return
+            
+        if "@" not in email or "." not in email:
+            messagebox.showwarning("Error", "Invalid email format!")
             return
 
+        # Check existing users
         users = {}
-        if os.path.exists("user_data.json"):
-            with open("user_data.json", "r") as f:
+        if os.path.exists(USER_DATA_PATH):
+            with open(USER_DATA_PATH, "r") as f:
                 users = json.load(f)
-        if name in users:
-            msg.showwarning("User Exists", "⚠️ Username already exists.")
-            return
-        for details in users.values():
-            if details.get("email") == email:
-                msg.showwarning("Email Exists", "⚠️ This email is already used.")
-                return
 
-        otp = self.send_otp_to_email(email)
+        if username in users:
+            messagebox.showwarning("Error", "Username already exists!")
+            return
+            
+        if any(user["email"] == email for user in users.values()):
+            messagebox.showwarning("Error", "Email already registered!")
+            return
+
+        # OTP Verification
+        otp = self._send_otp(email)
         if not otp:
             return
-
-        entered_otp = tk.simpledialog.askstring("OTP Verification", f"📩 Enter OTP sent to {email}:")
-        if entered_otp != otp:
-            msg.showerror("Invalid OTP", "❌ OTP verification failed.")
+            
+        user_otp = simpledialog.askstring("OTP Verification", 
+                                         "Enter the OTP sent to your email:")
+        if user_otp != otp:
+            messagebox.showerror("Error", "Invalid OTP!")
             return
 
-        users[name] = {
-            "password": self.hash_password(password),
-            "email": email
+        # Save new user
+        users[username] = {
+            "email": email,
+            "password": self._hash_password(password)
         }
-        with open("user_data.json", "w") as f:
+        
+        with open(USER_DATA_PATH, "w") as f:
             json.dump(users, f, indent=4)
 
-        # Initialize blank note for new user
-        notes = {}
-        if os.path.exists("notepad_data.json"):
-            with open("notepad_data.json", "r") as f:
-                notes = json.load(f)
-        notes[name] = ""
-        with open("notepad_data.json", "w") as f:
-            json.dump(notes, f, indent=4)
+        # Initialize empty note
+        self._initialize_user_note(username)
+        
+        messagebox.showinfo("Success", "Account created successfully!")
+        self.current_user = username
+        self._show_notepad()
 
-        self.current_user = name
-        self.show_notepad()
-
-    def show_login_screen(self):
-        for widget in self.window.winfo_children():
-            widget.destroy()
-
-        self.window.config(bg="#fff5e6")
-
-        tk.Label(self.window, text="🔐 Login", font=("Arial", 18, "bold"), bg="#fff5e6", fg="#cc6600").pack(pady=20)
-
-        usernames = []
-        if os.path.exists("user_data.json"):
-            with open("user_data.json", "r") as f:
-                self.users = json.load(f)
-                usernames = list(self.users.keys())
-
-        self.user_combo = Combobox(self.window, values=usernames, state="readonly", width=27)
-        self.user_combo.pack(pady=5)
-
-        self.login_pass_entry = tk.Entry(self.window, show="*", width=30)
-        tk.Label(self.window, text="Password:", font=("Arial", 12), bg="#fff5e6").pack()
-        self.login_pass_entry.pack(pady=5)
-
-        tk.Button(self.window, text="Login", width=20, font=("Arial", 12, "bold"), bg="#ffd699",
-                  command=self.check_login).pack(pady=20)
-        tk.Button(self.window, text="← Back", width=15, font=("Arial", 12, "bold"), bg="#ccccff",
-                  command=self.show_welcome_screen).pack()
-
-    def check_login(self):
-        username = self.user_combo.get()
-        password = self.login_pass_entry.get().strip()
+    def _handle_login(self):
+        """Authenticates existing users"""
+        username = self.username_combo.get()
+        password = self.password_entry.get()
 
         if not username or not password:
-            msg.showwarning("Input Error", "⚠️ Please enter login details.")
+            messagebox.showwarning("Error", "Both fields are required!")
             return
 
-        with open("user_data.json", "r") as f:
-            users = json.load(f)
+        try:
+            with open(USER_DATA_PATH, "r") as f:
+                users = json.load(f)
+                
+            if username in users and users[username]["password"] == self._hash_password(password):
+                self.current_user = username
+                self._show_notepad()
+            else:
+                messagebox.showerror("Error", "Invalid credentials!")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Login failed:\n{str(e)}")
 
-        if username in users and users[username]["password"] == self.hash_password(password):
-            self.current_user = username
-            self.show_notepad()
-        else:
-            msg.showerror("Login Failed", "❌ Invalid credentials.")
-
-    def show_notepad(self):
-        for widget in self.window.winfo_children():
-            widget.destroy()
-
-        self.window.config(bg="#e6f7ff")
-
-        # 🔹 Top bar with logout button
-        top_frame = tk.Frame(self.window, bg="#e6f7ff")
-        top_frame.pack(fill=tk.X, pady=(5, 0), padx=10)
-        tk.Button(top_frame, text="⏪ Logout", command=self.show_welcome_screen,
-                bg="#ccccff", font=("Arial", 10, "bold")).pack(anchor="ne")
-
-        # 🔹 Title
-        tk.Label(self.window, text=f"📝 Notes - {self.current_user}", font=("Arial", 16, "bold"),
-                bg="#e6f7ff").pack(pady=10)
-
-        # 🔹 Text area
-        self.text_area = tk.Text(self.window, height=15, width=50)
-        self.text_area.pack(pady=10)
-
-        # 🔹 Load and decrypt note
-        if os.path.exists("notepad_data.json"):
-            with open("notepad_data.json", "r") as f:
-                notes = json.load(f)
-                encrypted_note = notes.get(self.current_user, "")
-                try:
-                    if encrypted_note:
-                        decrypted_note = self.fernet.decrypt(encrypted_note.encode()).decode()
-                        self.text_area.insert(tk.END, decrypted_note)
-                except Exception as e:
-                    msg.showerror("Decryption Error", f"❌ Failed to decrypt notes:\n{e}")
-
-        # 🔹 Save and Delete buttons
-        tk.Button(self.window, text="💾 Save", command=self.save_notes, bg="#b3e6b3", font=("Arial", 12, "bold")).pack(pady=5)
-        tk.Button(self.window, text="🗑️ Delete", command=self.delete_notes, bg="#ff9999", font=("Arial", 12, "bold")).pack(pady=5)
-
-    def save_notes(self):
-        text = self.text_area.get("1.0", tk.END).strip()
-        encrypted_text = self.fernet.encrypt(text.encode()).decode()
-
+    def _initialize_user_note(self, username):
+        """Creates empty encrypted note for new user"""
         notes = {}
-        if os.path.exists("notepad_data.json"):
-            with open("notepad_data.json", "r") as f:
+        if os.path.exists(NOTES_DATA_PATH):
+            with open(NOTES_DATA_PATH, "r") as f:
                 notes = json.load(f)
-
-        notes[self.current_user] = encrypted_text
-        with open("notepad_data.json", "w") as f:
+                
+        notes[username] = self.fernet.encrypt(b"").decode()
+        
+        with open(NOTES_DATA_PATH, "w") as f:
             json.dump(notes, f, indent=4)
 
-        msg.showinfo("Saved", "✅ Notes saved securely!")
+    def _load_note(self):
+        """Decrypts and loads user's note"""
+        if not os.path.exists(NOTES_DATA_PATH):
+            return
+            
+        with open(NOTES_DATA_PATH, "r") as f:
+            notes = json.load(f)
+            
+        encrypted_note = notes.get(self.current_user, "")
+        if encrypted_note:
+            try:
+                decrypted = self.fernet.decrypt(encrypted_note.encode()).decode()
+                self.text_area.insert(tk.END, decrypted)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to decrypt note:\n{str(e)}")
 
-
-    def delete_notes(self):
-        self.text_area.delete("1.0", tk.END)
+    def _save_note(self):
+        """Encrypts and saves the current note"""
+        note_content = self.text_area.get("1.0", tk.END).strip()
+        encrypted = self.fernet.encrypt(note_content.encode()).decode()
+        
         notes = {}
-        if os.path.exists("notepad_data.json"):
-            with open("notepad_data.json", "r") as f:
+        if os.path.exists(NOTES_DATA_PATH):
+            with open(NOTES_DATA_PATH, "r") as f:
                 notes = json.load(f)
-        notes[self.current_user] = ""
-        with open("notepad_data.json", "w") as f:
+                
+        notes[self.current_user] = encrypted
+        
+        with open(NOTES_DATA_PATH, "w") as f:
             json.dump(notes, f, indent=4)
-        msg.showinfo("Deleted", "🗑️ Notes deleted.")
+            
+        messagebox.showinfo("Saved", "Note encrypted and saved successfully!")
 
-    def exit_app(self):
-        self.window.destroy()
+    def _clear_note(self):
+        """Clears the current note"""
+        if messagebox.askyesno("Confirm", "Clear all text?"):
+            self.text_area.delete("1.0", tk.END)
+            self._save_note()
 
 if __name__ == "__main__":
-    AuthApp()
+    SecureNotepad()

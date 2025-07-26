@@ -1,0 +1,22 @@
+# Environment variables
+.env
+
+# Data folder (stores user data/notes/keys)
+/secure_notepad_data/
+
+# Python cache and virtualenv
+__pycache__/
+*.py[cod]
+venv/
+
+# IDE files (VSCode, PyCharm)
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
+# Add these under existing rules
+user_data.json
+users.json
+EncryptedFileVault/
